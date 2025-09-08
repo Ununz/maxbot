@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Robot Controller</title>
+    <!-- เรียกใช้ไลบรารี Paho MQTT จาก CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js" type="text/javascript"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            touch-action: manipulation; /* ป้องกันการซูมเมื่อกดปุ่มบนมือถือ */
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .connection-settings {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        .connection-settings input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 250px;
+        }
+        #status {
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 10px;
+            width: 240px;
+            height: 240px;
+        }
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            user-select: none; /* ป้องกันการเลือกข้อความบนปุ่ม */
+            transition: background-color 0.2s;
+        }
+        .btn:active {
+            background-color: #0056b3;
+        }
+        .btn-go { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-stop { grid-column: 2; grid-row: 2; background-color: #dc3545; }
+        .btn-stop:active { background-color: #a71d2a; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+        .btn-rear { grid-column: 2; grid-row: 3; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Robot Car Controller</h1>
+        
+        <div class="connection-settings">
+            <input type="text" id="broker" value="broker.hivemq.com">
+            <input type="text" id="port" value="8884">
+            <input type="text" id="topic" value="robot/control">
+            <button onclick="connectMQTT()" class="btn" style="width: 150px; font-size: 16px;">Connect</button>
+        </div>
+
+        <div id="status">Status: Disconnected</div>
+
+        <div class="controls">
+            <button class="btn btn-go" onmousedown="publishMessage('go')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('go')" ontouchend="publishMessage('stop')">▲</button>
+            <button class="btn btn-left" onmousedown="publishMessage('left')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('left')" ontouchend="publishMessage('stop')">◄</button>
+            <button class="btn btn-stop" onclick="publishMessage('stop')">■</button>
+            <button class="btn btn-right" onmousedown="publishMessage('right')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('right')" ontouchend="publishMessage('stop')">►</button>
+            <button class="btn btn-rear" onmousedown="publishMessage('rear')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('rear')" ontouchend="publishMessage('stop')">▼</button>
+        </div>
+    </div>
+
+    <script>
+        // --- ตัวแปร Global ---
+        let client;
+        const statusElement = document.getElementById('status');
+        const brokerInput = document.getElementById('broker');
+        const portInput = document.getElementById('port');
+        const topicInput = document.getElementById('topic');
+
+        // --- ฟังก์ชันเชื่อมต่อ MQTT Broker ---
+        function connectMQTT() {
+            const broker = brokerInput.value;
+            const port = Number(portInput.value);
+            // สร้าง Client ID แบบสุ่ม เพื่อป้องกันการชนกัน
+            const clientId = "webClient_" + parseInt(Math.random() * 1000);
+
+            // สร้าง MQTT client instance ใหม่
+            client = new Paho.MQTT.Client(broker, port, clientId);
+
+            // ตั้งค่า callback functions
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            // เชื่อมต่อ broker
+            statusElement.innerHTML = "Status: Connecting...";
+            statusElement.style.color = "orange";
+            client.connect({
+                onSuccess: onConnect,
+                onFailure: onFailure,
+                useSSL: true // ใช้ true สำหรับ port 8884 (wss)
+            });
+        }
+
+        // --- Callback เมื่อเชื่อมต่อสำเร็จ ---
+        function onConnect() {
+            console.log("Connected to MQTT Broker!");
+            statusElement.innerHTML = "Status: Connected";
+            statusElement.style.color = "green";
+            // คุณสามารถ subscribe topic ที่นี่ได้ หากต้องการรับข้อมูลกลับจากรถ
+            // client.subscribe("robot/status");
+        }
+
+        // --- Callback เมื่อเชื่อมต่อล้มเหลว ---
+        function onFailure(responseObject) {
+            console.log("Connection failed: " + responseObject.errorMessage);
+            statusElement.innerHTML = "Status: Connection Failed";
+            statusElement.style.color = "red";
+        }
+
+        // --- Callback เมื่อการเชื่อมต่อหลุด ---
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("Connection lost: " + responseObject.errorMessage);
+                statusElement.innerHTML = "Status: Disconnected";
+                statusElement.style.color = "red";
+            }
+        }
+
+        // --- Callback เมื่อได้รับข้อความ (ถ้ามีการ subscribe) ---
+        function onMessageArrived(message) {
+            console.log("Message Arrived: " + message.payloadString);
+            // สามารถแสดงข้อมูลที่ได้รับจากรถได้ที่นี่
+        }
+
+        // --- ฟังก์ชันสำหรับส่ง (Publish) ข้อความ ---
+        function publishMessage(command) {
+            if (client && client.isConnected()) {
+                const topic = topicInput.value;
+                const message = new Paho.MQTT.Message(command);
+                message.destinationName = topic;
+                client.send(message);
+                console.log(`Published: "${command}" to topic: "${topic}"`);
+            } else {
+                console.log("Cannot publish. Client is not connected.");
+                statusElement.innerHTML = "Status: Please Connect First";
+                statusElement.style.color = "red";
+            }
+        }
+
+        // เพิ่มการทำงานแบบ "กดแช่" และ "ปล่อยเพื่อหยุด"
+        // onmousedown คือตอนกดเมาส์ค้าง, onmouseup คือตอนปล่อยเมาส์
+        // ontouchstart คือตอนแตะหน้าจอ, ontouchend คือตอนปล่อยนิ้ว
+        // ปุ่ม stop จะทำงานเมื่อคลิก/แตะครั้งเดียว
+    </script>
+
+</body>
+</html>
