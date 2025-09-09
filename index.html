@@ -3,123 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Micro:bit Car Control</title>
-    <!-- 1. โหลด Tailwind CSS เพื่อความสวยงาม -->
+    <title>Micro:bit Car Control (Pro)</title>
+    <!-- 1. โหลด Tailwind CSS และ Font จากตัวอย่างของคุณ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 2. โหลด Paho MQTT Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.js"></script>
     <style>
-        /* สไตล์เพิ่มเติมเล็กน้อยเพื่อให้ดูดีขึ้น */
         body {
-            background-color: #f0f2f5;
+            font-family: 'Inter', sans-serif;
+            background-color: #F0F2F5; /* A slightly softer background */
+        }
+        .main-content {
+            background-color: #FFFFFF;
+            transition: all 0.3s ease-in-out;
         }
         .control-button:active {
             transform: scale(0.95);
             filter: brightness(0.9);
         }
+        .hidden-page {
+            display: none;
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c4b5fd; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a78bfa; }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen font-sans">
+<body class="min-h-screen">
 
-    <div class="w-full max-w-lg p-6 bg-white rounded-2xl shadow-xl space-y-6">
-
-        <!-- Section 1: Connection -->
-        <div class="p-4 border border-gray-200 rounded-lg">
-            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Connection</h2>
-            <div class="space-y-3">
-                <div class="flex items-center space-x-3">
-                    <label for="brokerHost" class="w-28 font-semibold text-gray-600">Broker Host:</label>
-                    <input type="text" id="brokerHost" value="broker.hivemq.com" class="flex-1 p-2 border rounded-md bg-gray-100" readonly>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <label for="brokerPort" class="w-28 font-semibold text-gray-600">Port (WSS):</label>
-                    <input type="number" id="brokerPort" value="8884" class="flex-1 p-2 border rounded-md bg-gray-100" readonly>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <label for="topic" class="w-28 font-semibold text-gray-600">Topic:</label>
-                    <input type="text" id="topic" value="microbit-control" class="flex-1 p-2 border rounded-md">
-                </div>
-            </div>
-            <button id="connectBtn" class="w-full mt-4 py-3 text-white font-bold rounded-lg transition-all duration-300 bg-green-500 hover:bg-green-600">
-                Connect
-            </button>
-            <div class="flex items-center justify-center mt-3 space-x-2">
-                <div id="status-circle" class="w-3 h-3 rounded-full bg-red-500 transition-colors"></div>
-                <span id="status-text" class="font-semibold text-red-500">Disconnected</span>
-            </div>
+    <!-- Navbar ด้านบนสุดสำหรับแสดงสถานะ -->
+    <nav class="bg-white shadow-md p-3 flex justify-between items-center fixed top-0 left-0 w-full z-50">
+        <h1 class="text-xl font-bold text-indigo-600">Car Control Panel</h1>
+        <div class="flex items-center gap-3">
+            <div id="status-circle" class="w-4 h-4 rounded-full bg-red-500 transition-colors duration-300"></div>
+            <div id="status-text" class="font-semibold text-red-500">Disconnected</div>
         </div>
+    </nav>
 
-        <!-- Section 2: Motor Control -->
-        <div class="p-4 border border-gray-200 rounded-lg">
-            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Motor Controls</h2>
-            <!-- D-Pad Controls -->
-            <div class="grid grid-cols-3 gap-3 w-48 mx-auto mb-6">
-                <div></div>
-                <button onclick="sendMessage('go')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">▲</button>
-                <div></div>
-                <button onclick="sendMessage('left')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">◄</button>
-                <button onclick="sendMessage('stop')" class="control-button bg-red-500 text-white rounded-md aspect-square font-bold">STOP</button>
-                <button onclick="sendMessage('right')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">►</button>
-                <div></div>
-                <button onclick="sendMessage('rear')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">▼</button>
-                <div></div>
-            </div>
-            <!-- Speed Slider -->
-            <div class="text-center">
-                <label for="speedSlider" class="font-semibold text-gray-600">Speed: <span id="speedValue">200</span></label>
-                <input type="range" min="0" max="255" value="200" id="speedSlider" class="w-full mt-2" oninput="sendSpeed()">
-            </div>
+    <div class="flex justify-center items-center min-h-screen pt-20 pb-10">
+        <div class="main-content w-full max-w-2xl p-6 rounded-2xl shadow-xl space-y-6">
+
+            <!-- Section 1: หน้าเชื่อมต่อ (จะถูกซ่อนเมื่อเชื่อมต่อสำเร็จ) -->
+            <section id="page-connect" class="space-y-4">
+                <h2 class="text-2xl font-bold text-center text-gray-700">Connect to your Car</h2>
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <label for="topic" class="block text-sm font-medium text-gray-600">Topic (ต้องตรงกับ Micro:bit)</label>
+                    <input type="text" id="topic" value="microbit-control" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-gray-800 focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+                <button id="connectBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out hover:bg-indigo-700">
+                    Connect to Broker
+                </button>
+            </section>
+
+            <!-- Section 2: หน้าควบคุมทั้งหมด (จะแสดงเมื่อเชื่อมต่อสำเร็จ) -->
+            <section id="page-controls" class="hidden-page space-y-6">
+                <!-- Card 1: Motor & Speed Controls -->
+                <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4 text-center">Motor & Speed</h3>
+                    <div class="flex flex-col md:flex-row items-center justify-around gap-6">
+                        <!-- D-Pad -->
+                        <div class="grid grid-cols-3 gap-3 w-48">
+                            <div></div>
+                            <button onclick="sendMessage('go')" class="control-button bg-slate-700 text-white rounded-full aspect-square text-2xl font-bold shadow-lg">▲</button>
+                            <div></div>
+                            <button onclick="sendMessage('left')" class="control-button bg-slate-700 text-white rounded-full aspect-square text-2xl font-bold shadow-lg">◄</button>
+                            <button onclick="sendMessage('stop')" class="control-button bg-red-600 text-white rounded-md aspect-square font-bold shadow-lg">STOP</button>
+                            <button onclick="sendMessage('right')" class="control-button bg-slate-700 text-white rounded-full aspect-square text-2xl font-bold shadow-lg">►</button>
+                            <div></div>
+                            <button onclick="sendMessage('rear')" class="control-button bg-slate-700 text-white rounded-full aspect-square text-2xl font-bold shadow-lg">▼</button>
+                            <div></div>
+                        </div>
+                        <!-- Speed Slider -->
+                        <div class="w-full md:w-auto text-center">
+                            <label for="speedSlider" class="font-semibold text-gray-600">Speed: <span id="speedValue" class="font-bold text-indigo-600 text-lg">200</span></label>
+                            <input type="range" min="0" max="255" value="200" id="speedSlider" class="w-full mt-2 h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="sendSpeed()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Manual Command (Textbox) -->
+                <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-bold text-gray-700 mb-2">Manual Command</h3>
+                    <div class="flex space-x-2">
+                        <input type="text" id="commandInput" placeholder="Enter command (e.g., go, speed:150)" class="flex-1 p-2 border rounded-md focus:border-indigo-500 focus:ring-indigo-500">
+                        <button onclick="sendFromTextbox()" class="px-6 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600">Send</button>
+                    </div>
+                </div>
+
+                <!-- Card 3: Message Log -->
+                <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-lg font-bold text-gray-700">Message Log</h3>
+                        <button id="clearLogBtn" class="text-sm bg-gray-200 px-3 py-1 rounded-full hover:bg-gray-300">Clear</button>
+                    </div>
+                    <div id="messageLogContainer" class="bg-white p-3 rounded-md h-40 overflow-y-scroll text-sm font-mono text-gray-600 border">
+                        <!-- Log messages will appear here -->
+                    </div>
+                </div>
+            </section>
         </div>
-
-        <!-- Section 3: Manual Command -->
-        <div class="p-4 border border-gray-200 rounded-lg">
-            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Manual Command</h2>
-            <div class="flex space-x-2">
-                <input type="text" id="commandInput" placeholder="Enter command..." class="flex-1 p-2 border rounded-md">
-                <button onclick="sendFromTextbox()" class="px-6 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600">Send</button>
-            </div>
-        </div>
-
     </div>
 
     <script>
+        // --- ค่า Config หลัก ---
+        const HOST = 'broker.hivemq.com';
+        const PORT = 8884; // ใช้ Port ที่เข้ารหัส (WSS) เป็นค่าเริ่มต้น
+
         let client;
         let isConnected = false;
+        let topic;
 
+        // --- Element References ---
         const connectBtn = document.getElementById('connectBtn');
         const statusCircle = document.getElementById('status-circle');
         const statusText = document.getElementById('status-text');
-
-        function toggleConnect() {
-            if (isConnected) {
-                client.disconnect();
-            } else {
-                connectBroker();
-            }
-        }
+        const pageConnect = document.getElementById('page-connect');
+        const pageControls = document.getElementById('page-controls');
+        const logContainer = document.getElementById('messageLogContainer');
 
         function connectBroker() {
-            const host = document.getElementById('brokerHost').value;
-            const port = Number(document.getElementById('brokerPort').value);
-            const topic = document.getElementById('topic').value;
-            const clientId = "web-control-" + Math.random().toString(16).substr(2, 8);
-
+            topic = document.getElementById('topic').value.trim();
             if (!topic) {
                 alert("Please enter a Topic.");
                 return;
             }
 
-            client = new Paho.MQTT.Client(host, port, clientId);
+            const clientId = "web-car-control-" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(HOST, PORT, clientId);
             client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
 
             updateUI("connecting");
             client.connect({
-                useSSL: true, // ใช้การเชื่อมต่อแบบปลอดภัย (WSS) เสมอ
+                useSSL: true, // บังคับใช้การเชื่อมต่อแบบปลอดภัย
                 timeout: 10,
                 onSuccess: () => {
                     isConnected = true;
                     updateUI("connected");
                     client.subscribe(topic);
+                    logMessage(`Subscribed to topic: ${topic}`);
+                    pageConnect.classList.add('hidden-page');
+                    pageControls.classList.remove('hidden-page');
                 },
                 onFailure: (response) => {
                     isConnected = false;
@@ -132,20 +161,23 @@
         function onConnectionLost(responseObject) {
             isConnected = false;
             updateUI("disconnected");
+            pageConnect.classList.remove('hidden-page');
+            pageControls.classList.add('hidden-page');
             if (responseObject.errorCode !== 0) {
-                console.log("Connection lost: " + responseObject.errorMessage);
+                logMessage("Connection lost: " + responseObject.errorMessage);
             }
         }
 
+        function onMessageArrived(message) {
+            logMessage(`[FROM MICROBIT] ${message.payloadString}`);
+        }
+
         function sendMessage(command) {
-            if (!isConnected) {
-                alert("Please connect to the MQTT broker first!");
-                return;
-            }
-            const topic = document.getElementById('topic').value;
+            if (!isConnected) return;
             const message = new Paho.MQTT.Message(command);
             message.destinationName = topic;
             client.send(message);
+            logMessage(`[SENT] ${command}`);
         }
 
         function sendSpeed() {
@@ -162,44 +194,37 @@
                 commandInput.value = '';
             }
         }
-        
-        document.getElementById('commandInput').addEventListener('keydown', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                sendFromTextbox();
-            }
-        });
 
+        function logMessage(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            logContainer.innerHTML += `<div><span class="text-gray-400">[${timestamp}]</span> ${msg}</div>`;
+            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll
+        }
+        
         function updateUI(status) {
             if (status === "connected") {
-                connectBtn.textContent = "Disconnect";
-                connectBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
-                connectBtn.classList.add('bg-red-500', 'hover:bg-red-600');
-                statusCircle.classList.remove('bg-red-500', 'bg-yellow-500');
-                statusCircle.classList.add('bg-green-500');
+                statusCircle.className = 'w-4 h-4 rounded-full bg-green-500';
                 statusText.textContent = "Connected";
-                statusText.classList.remove('text-red-500', 'text-yellow-500');
-                statusText.classList.add('text-green-500');
+                statusText.className = 'font-semibold text-green-500';
             } else if (status === "connecting") {
                 statusText.textContent = "Connecting...";
-                statusCircle.classList.remove('bg-red-500', 'bg-green-500');
-                statusCircle.classList.add('bg-yellow-500');
-                statusText.classList.remove('text-red-500', 'text-green-500');
-                statusText.classList.add('text-yellow-500');
-            } else { // disconnected or failed
-                connectBtn.textContent = "Connect";
-                connectBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
-                connectBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-                statusCircle.classList.remove('bg-green-500', 'bg-yellow-500');
-                statusCircle.classList.add('bg-red-500');
+                statusCircle.className = 'w-4 h-4 rounded-full bg-yellow-500 animate-pulse';
+                statusText.className = 'font-semibold text-yellow-500';
+            } else { // disconnected
+                statusCircle.className = 'w-4 h-4 rounded-full bg-red-500';
                 statusText.textContent = "Disconnected";
-                statusText.classList.remove('text-green-500', 'text-yellow-500');
-                statusText.classList.add('text-red-500');
+                statusText.className = 'font-semibold text-red-500';
             }
         }
-
-        // --- Event Listener ---
-        connectBtn.addEventListener('click', toggleConnect);
+        
+        // --- Event Listeners ---
+        connectBtn.addEventListener('click', connectBroker);
+        document.getElementById('commandInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendFromTextbox();
+        });
+        document.getElementById('clearLogBtn').addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
     </script>
 
 </body>
