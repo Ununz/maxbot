@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 2. โหลด Paho MQTT Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.js"></script>
+    <!-- 2. โหลด Paho MQTT Library (อัปเดต URL เป็นเวอร์ชันที่ใช้งานได้) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.4/paho-mqtt.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -132,6 +132,10 @@
         const logContainer = document.getElementById('messageLogContainer');
 
         function connectBroker() {
+            if (typeof Paho === 'undefined' || typeof Paho.MQTT === 'undefined') {
+                alert("Paho MQTT library not loaded. Please check your internet connection and refresh the page.");
+                return;
+            }
             topic = document.getElementById('topic').value.trim();
             if (!topic) {
                 alert("Please enter a Topic.");
