@@ -3,186 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MQTT Robot Controller</title>
-    <!-- เรียกใช้ไลบรารี Paho MQTT จาก CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js" type="text/javascript"></script>
+    <title>Micro:bit Car Control</title>
+    <!-- 1. โหลด Tailwind CSS เพื่อความสวยงาม -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. โหลด Paho MQTT Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.js"></script>
     <style>
+        /* สไตล์เพิ่มเติมเล็กน้อยเพื่อให้ดูดีขึ้น */
         body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-            touch-action: manipulation; /* ป้องกันการซูมเมื่อกดปุ่มบนมือถือ */
+            background-color: #f0f2f5;
         }
-        .container {
-            text-align: center;
-            padding: 20px;
-            background-color: white;
-            border-radius: 15px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        .control-button:active {
+            transform: scale(0.95);
+            filter: brightness(0.9);
         }
-        h1 {
-            color: #333;
-        }
-        .connection-settings {
-            margin-bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            align-items: center;
-        }
-        .connection-settings input {
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            width: 250px;
-        }
-        #status {
-            margin-bottom: 20px;
-            font-weight: bold;
-        }
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            grid-template-rows: 1fr 1fr 1fr;
-            gap: 10px;
-            width: 240px;
-            height: 240px;
-        }
-        .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: bold;
-            border: none;
-            border-radius: 10px;
-            background-color: #007bff;
-            color: white;
-            cursor: pointer;
-            user-select: none; /* ป้องกันการเลือกข้อความบนปุ่ม */
-            transition: background-color 0.2s;
-        }
-        .btn:active {
-            background-color: #0056b3;
-        }
-        .btn-go { grid-column: 2; grid-row: 1; }
-        .btn-left { grid-column: 1; grid-row: 2; }
-        .btn-stop { grid-column: 2; grid-row: 2; background-color: #dc3545; }
-        .btn-stop:active { background-color: #a71d2a; }
-        .btn-right { grid-column: 3; grid-row: 2; }
-        .btn-rear { grid-column: 2; grid-row: 3; }
     </style>
 </head>
-<body>
+<body class="flex items-center justify-center min-h-screen font-sans">
 
-    <div class="container">
-        <h1>Robot Car Controller</h1>
-        
-        <div class="connection-settings">
-            <input type="text" id="broker" value="broker.hivemq.com">
-            <input type="text" id="port" value="8884">
-            <input type="text" id="topic" value="robot/control">
-            <button onclick="connectMQTT()" class="btn" style="width: 150px; font-size: 16px;">Connect</button>
+    <div class="w-full max-w-lg p-6 bg-white rounded-2xl shadow-xl space-y-6">
+
+        <!-- Section 1: Connection -->
+        <div class="p-4 border border-gray-200 rounded-lg">
+            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Connection</h2>
+            <div class="space-y-3">
+                <div class="flex items-center space-x-3">
+                    <label for="brokerHost" class="w-28 font-semibold text-gray-600">Broker Host:</label>
+                    <input type="text" id="brokerHost" value="broker.hivemq.com" class="flex-1 p-2 border rounded-md bg-gray-100" readonly>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <label for="brokerPort" class="w-28 font-semibold text-gray-600">Port (WSS):</label>
+                    <input type="number" id="brokerPort" value="8884" class="flex-1 p-2 border rounded-md bg-gray-100" readonly>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <label for="topic" class="w-28 font-semibold text-gray-600">Topic:</label>
+                    <input type="text" id="topic" value="microbit-control" class="flex-1 p-2 border rounded-md">
+                </div>
+            </div>
+            <button id="connectBtn" class="w-full mt-4 py-3 text-white font-bold rounded-lg transition-all duration-300 bg-green-500 hover:bg-green-600">
+                Connect
+            </button>
+            <div class="flex items-center justify-center mt-3 space-x-2">
+                <div id="status-circle" class="w-3 h-3 rounded-full bg-red-500 transition-colors"></div>
+                <span id="status-text" class="font-semibold text-red-500">Disconnected</span>
+            </div>
         </div>
 
-        <div id="status">Status: Disconnected</div>
-
-        <div class="controls">
-            <button class="btn btn-go" onmousedown="publishMessage('go')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('go')" ontouchend="publishMessage('stop')">▲</button>
-            <button class="btn btn-left" onmousedown="publishMessage('left')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('left')" ontouchend="publishMessage('stop')">◄</button>
-            <button class="btn btn-stop" onclick="publishMessage('stop')">■</button>
-            <button class="btn btn-right" onmousedown="publishMessage('right')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('right')" ontouchend="publishMessage('stop')">►</button>
-            <button class="btn btn-rear" onmousedown="publishMessage('rear')" onmouseup="publishMessage('stop')" ontouchstart="publishMessage('rear')" ontouchend="publishMessage('stop')">▼</button>
+        <!-- Section 2: Motor Control -->
+        <div class="p-4 border border-gray-200 rounded-lg">
+            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Motor Controls</h2>
+            <!-- D-Pad Controls -->
+            <div class="grid grid-cols-3 gap-3 w-48 mx-auto mb-6">
+                <div></div>
+                <button onclick="sendMessage('go')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">▲</button>
+                <div></div>
+                <button onclick="sendMessage('left')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">◄</button>
+                <button onclick="sendMessage('stop')" class="control-button bg-red-500 text-white rounded-md aspect-square font-bold">STOP</button>
+                <button onclick="sendMessage('right')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">►</button>
+                <div></div>
+                <button onclick="sendMessage('rear')" class="control-button bg-blue-500 text-white rounded-full aspect-square text-2xl font-bold">▼</button>
+                <div></div>
+            </div>
+            <!-- Speed Slider -->
+            <div class="text-center">
+                <label for="speedSlider" class="font-semibold text-gray-600">Speed: <span id="speedValue">200</span></label>
+                <input type="range" min="0" max="255" value="200" id="speedSlider" class="w-full mt-2" oninput="sendSpeed()">
+            </div>
         </div>
+
+        <!-- Section 3: Manual Command -->
+        <div class="p-4 border border-gray-200 rounded-lg">
+            <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Manual Command</h2>
+            <div class="flex space-x-2">
+                <input type="text" id="commandInput" placeholder="Enter command..." class="flex-1 p-2 border rounded-md">
+                <button onclick="sendFromTextbox()" class="px-6 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600">Send</button>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        // --- ตัวแปร Global ---
         let client;
-        const statusElement = document.getElementById('status');
-        const brokerInput = document.getElementById('broker');
-        const portInput = document.getElementById('port');
-        const topicInput = document.getElementById('topic');
+        let isConnected = false;
 
-        // --- ฟังก์ชันเชื่อมต่อ MQTT Broker ---
-        function connectMQTT() {
-            const broker = brokerInput.value;
-            const port = Number(portInput.value);
-            // สร้าง Client ID แบบสุ่ม เพื่อป้องกันการชนกัน
-            const clientId = "webClient_" + parseInt(Math.random() * 1000);
+        const connectBtn = document.getElementById('connectBtn');
+        const statusCircle = document.getElementById('status-circle');
+        const statusText = document.getElementById('status-text');
 
-            // สร้าง MQTT client instance ใหม่
-            client = new Paho.MQTT.Client(broker, port, clientId);
+        function toggleConnect() {
+            if (isConnected) {
+                client.disconnect();
+            } else {
+                connectBroker();
+            }
+        }
 
-            // ตั้งค่า callback functions
+        function connectBroker() {
+            const host = document.getElementById('brokerHost').value;
+            const port = Number(document.getElementById('brokerPort').value);
+            const topic = document.getElementById('topic').value;
+            const clientId = "web-control-" + Math.random().toString(16).substr(2, 8);
+
+            if (!topic) {
+                alert("Please enter a Topic.");
+                return;
+            }
+
+            client = new Paho.MQTT.Client(host, port, clientId);
             client.onConnectionLost = onConnectionLost;
-            client.onMessageArrived = onMessageArrived;
 
-            // เชื่อมต่อ broker
-            statusElement.innerHTML = "Status: Connecting...";
-            statusElement.style.color = "orange";
+            updateUI("connecting");
             client.connect({
-                onSuccess: onConnect,
-                onFailure: onFailure,
-                useSSL: true // ใช้ true สำหรับ port 8884 (wss)
+                useSSL: true, // ใช้การเชื่อมต่อแบบปลอดภัย (WSS) เสมอ
+                timeout: 10,
+                onSuccess: () => {
+                    isConnected = true;
+                    updateUI("connected");
+                    client.subscribe(topic);
+                },
+                onFailure: (response) => {
+                    isConnected = false;
+                    updateUI("disconnected");
+                    alert("Connection Failed: " + response.errorMessage);
+                }
             });
         }
 
-        // --- Callback เมื่อเชื่อมต่อสำเร็จ ---
-        function onConnect() {
-            console.log("Connected to MQTT Broker!");
-            statusElement.innerHTML = "Status: Connected";
-            statusElement.style.color = "green";
-            // คุณสามารถ subscribe topic ที่นี่ได้ หากต้องการรับข้อมูลกลับจากรถ
-            // client.subscribe("robot/status");
-        }
-
-        // --- Callback เมื่อเชื่อมต่อล้มเหลว ---
-        function onFailure(responseObject) {
-            console.log("Connection failed: " + responseObject.errorMessage);
-            statusElement.innerHTML = "Status: Connection Failed";
-            statusElement.style.color = "red";
-        }
-
-        // --- Callback เมื่อการเชื่อมต่อหลุด ---
         function onConnectionLost(responseObject) {
+            isConnected = false;
+            updateUI("disconnected");
             if (responseObject.errorCode !== 0) {
                 console.log("Connection lost: " + responseObject.errorMessage);
-                statusElement.innerHTML = "Status: Disconnected";
-                statusElement.style.color = "red";
             }
         }
 
-        // --- Callback เมื่อได้รับข้อความ (ถ้ามีการ subscribe) ---
-        function onMessageArrived(message) {
-            console.log("Message Arrived: " + message.payloadString);
-            // สามารถแสดงข้อมูลที่ได้รับจากรถได้ที่นี่
+        function sendMessage(command) {
+            if (!isConnected) {
+                alert("Please connect to the MQTT broker first!");
+                return;
+            }
+            const topic = document.getElementById('topic').value;
+            const message = new Paho.MQTT.Message(command);
+            message.destinationName = topic;
+            client.send(message);
         }
 
-        // --- ฟังก์ชันสำหรับส่ง (Publish) ข้อความ ---
-        function publishMessage(command) {
-            if (client && client.isConnected()) {
-                const topic = topicInput.value;
-                const message = new Paho.MQTT.Message(command);
-                message.destinationName = topic;
-                client.send(message);
-                console.log(`Published: "${command}" to topic: "${topic}"`);
-            } else {
-                console.log("Cannot publish. Client is not connected.");
-                statusElement.innerHTML = "Status: Please Connect First";
-                statusElement.style.color = "red";
+        function sendSpeed() {
+            const speedValue = document.getElementById('speedSlider').value;
+            document.getElementById('speedValue').innerText = speedValue;
+            sendMessage(`speed:${speedValue}`);
+        }
+
+        function sendFromTextbox() {
+            const commandInput = document.getElementById('commandInput');
+            const command = commandInput.value.trim();
+            if (command) {
+                sendMessage(command);
+                commandInput.value = '';
+            }
+        }
+        
+        document.getElementById('commandInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendFromTextbox();
+            }
+        });
+
+        function updateUI(status) {
+            if (status === "connected") {
+                connectBtn.textContent = "Disconnect";
+                connectBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                connectBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                statusCircle.classList.remove('bg-red-500', 'bg-yellow-500');
+                statusCircle.classList.add('bg-green-500');
+                statusText.textContent = "Connected";
+                statusText.classList.remove('text-red-500', 'text-yellow-500');
+                statusText.classList.add('text-green-500');
+            } else if (status === "connecting") {
+                statusText.textContent = "Connecting...";
+                statusCircle.classList.remove('bg-red-500', 'bg-green-500');
+                statusCircle.classList.add('bg-yellow-500');
+                statusText.classList.remove('text-red-500', 'text-green-500');
+                statusText.classList.add('text-yellow-500');
+            } else { // disconnected or failed
+                connectBtn.textContent = "Connect";
+                connectBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                connectBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                statusCircle.classList.remove('bg-green-500', 'bg-yellow-500');
+                statusCircle.classList.add('bg-red-500');
+                statusText.textContent = "Disconnected";
+                statusText.classList.remove('text-green-500', 'text-yellow-500');
+                statusText.classList.add('text-red-500');
             }
         }
 
-        // เพิ่มการทำงานแบบ "กดแช่" และ "ปล่อยเพื่อหยุด"
-        // onmousedown คือตอนกดเมาส์ค้าง, onmouseup คือตอนปล่อยเมาส์
-        // ontouchstart คือตอนแตะหน้าจอ, ontouchend คือตอนปล่อยนิ้ว
-        // ปุ่ม stop จะทำงานเมื่อคลิก/แตะครั้งเดียว
+        // --- Event Listener ---
+        connectBtn.addEventListener('click', toggleConnect);
     </script>
 
 </body>
